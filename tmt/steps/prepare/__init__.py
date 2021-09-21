@@ -20,6 +20,7 @@ class Prepare(tmt.steps.Step):
     def __init__(self, data, plan):
         """ Initialize prepare step data """
         super().__init__(data, plan)
+        self.preparations_applied = 0
 
     def wake(self):
         """ Wake up the step (process workdir and command line) """
@@ -49,7 +50,8 @@ class Prepare(tmt.steps.Step):
 
     def summary(self):
         """ Give a concise summary of the preparation """
-        preparations = fmf.utils.listed(self.plugins(), 'preparation')
+        preparations = fmf.utils.listed(
+            self.preparations_applied, 'preparation')
         self.info('summary', f'{preparations} applied', 'green', shift=1)
 
     def go(self):
@@ -101,7 +103,10 @@ class Prepare(tmt.steps.Step):
             guest_copy.parent = self
             # Execute each prepare plugin
             for plugin in self.plugins():
-                plugin.go(guest_copy)
+                if plugin.enabled_on_guest(guest_copy):
+                    self.preparations_applied += 1
+                    plugin.go(guest_copy)
+                    self.info('')
 
         # Give a summary, update status and save
         self.summary()
@@ -114,6 +119,9 @@ class PreparePlugin(tmt.steps.Plugin):
 
     # List of all supported methods aggregated from all plugins
     _supported_methods = []
+
+    # Common keys for all prepare step implementations
+    _keys = ['on']
 
     @classmethod
     def base_command(cls, method_class=None, usage=None):
@@ -134,3 +142,9 @@ class PreparePlugin(tmt.steps.Plugin):
             Prepare._save_context(context)
 
         return prepare
+
+    def go(self):
+        super().go()
+        on = self.get('on')
+        if on:
+            self.info('on', on, 'green')
